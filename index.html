@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Java Editor</title>
+<style>
+  :root { --bg:#1b1d23; --panel:#14161b; --line:#2c2f38; --fg:#d8dae0; --dim:#8a8f9c; --accent:#f0a030; --err:#ff7b72; }
+  * { box-sizing:border-box; }
+  html,body { height:100%; margin:0; }
+  body { display:flex; flex-direction:column; background:var(--bg); color:var(--fg);
+         font:14px/1.5 "Hiragino Sans","Yu Gothic UI","Noto Sans JP",system-ui,sans-serif; }
+  header { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; padding:8px 12px; border-bottom:1px solid var(--line); background:var(--panel); }
+  header h1 { font-size:15px; font-weight:600; margin:0 auto 0 0; }
+  #credit { margin-left:10px; color:var(--dim); font-size:11px; font-weight:400; opacity:.8; }
+  #status { color:var(--dim); font-size:13px; }
+  .lab { color:var(--dim); font-size:13px; }
+  button { font:inherit; color:#1b1d23; background:var(--accent); border:0; border-radius:4px; padding:6px 16px; font-weight:600; cursor:pointer; }
+  button.sub { background:transparent; color:var(--fg); border:1px solid var(--line); font-weight:400; }
+  select { font:inherit; color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:5px 8px; max-width:300px; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  button:focus-visible, select:focus-visible { outline:2px solid #fff; outline-offset:2px; }
+  main { flex:1; display:flex; flex-direction:column; min-height:0; min-width:0; }
+  #split { flex:1; display:flex; min-height:0; }
+  #slides { flex:0 0 50%; display:flex; flex-direction:column; min-width:0; background:var(--panel); }
+  #slides[hidden], #gutter[hidden] { display:none; }
+  #sbar { display:flex; align-items:center; flex-wrap:wrap; gap:6px 8px; padding:6px 10px; border-bottom:1px solid var(--line); }
+  #sbar button { padding:4px 12px; }
+  #pageNo { width:64px; font:inherit; color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:4px 6px; }
+  #sbar .lab { margin-left:auto; }
+  #sview { flex:1; min-height:0; position:relative; display:flex; align-items:center; justify-content:center; background:#0e1014; overflow:hidden;
+           -webkit-touch-callout:none; user-select:none; }
+  #simg { max-width:100%; max-height:100%; object-fit:contain; user-select:none; -webkit-user-drag:none; pointer-events:none; }
+  #smsg { position:absolute; color:var(--dim); font-size:13px; }
+  #gutter { flex:0 0 6px; cursor:col-resize; background:var(--line); touch-action:none; }
+  #gutter:hover { background:var(--accent); }
+  @media (max-width:900px) {
+    #split { flex-direction:column; }
+    #slides { flex:0 0 42% !important; }
+    #gutter { display:none; }
+  }
+  #tabs { display:flex; align-items:stretch; overflow-x:auto; background:var(--panel); border-bottom:1px solid var(--line); }
+  .tab { display:flex; align-items:center; gap:4px; padding:4px 8px 4px 12px; color:var(--dim); border-right:1px solid var(--line);
+         cursor:pointer; white-space:nowrap; font-size:13px; }
+  .tab.active { color:var(--fg); background:var(--bg); box-shadow:inset 0 -2px var(--accent); }
+  .tab.err .nm { color:var(--err); }
+  .tab button { background:transparent; color:inherit; padding:0 5px; font-weight:400; border-radius:3px; }
+  .tab button:hover { background:var(--line); }
+  #add { border:0; border-radius:0; padding:4px 14px; }
+  #work { flex:1; display:flex; min-height:0; }
+  #pane { flex:1; display:flex; flex-direction:column; min-width:0; }
+  #tree { flex:0 0 200px; display:flex; flex-direction:column; background:var(--panel); border-right:1px solid var(--line); }
+  #tree[hidden] { display:none; }
+  #treeList { flex:1; overflow:auto; padding:4px 0; }
+  .row { display:block; width:100%; text-align:left; background:transparent; color:var(--fg); border-radius:0; font-weight:400; padding:3px 8px; font-size:13px; white-space:nowrap; }
+  .row:hover { background:var(--line); }
+  .row.dir { color:var(--dim); }
+  .row.active { background:var(--bg); box-shadow:inset 2px 0 var(--accent); }
+  .row.err { color:var(--err); }
+  .rw { display:flex; align-items:center; }
+  .rw .row { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+  .del { background:transparent; color:var(--dim); padding:0 10px; font-weight:400; border-radius:0; opacity:.5; }
+  .rw:hover .del, .del:focus-visible { opacity:1; color:var(--err); }
+  #editor { flex:1; min-height:0; }
+  #bottom { height:34%; min-height:140px; display:flex; border-top:1px solid var(--line); background:var(--panel); }
+  #bottom section { display:flex; flex-direction:column; min-width:0; }
+  #in-wrap { flex:0 0 30%; border-right:1px solid var(--line); }
+  #out-wrap { flex:1; }
+  .head { padding:4px 12px; color:var(--dim); font-size:12px; border-bottom:1px solid var(--line); }
+  #stdin { flex:1; resize:none; border:0; outline:0; padding:8px 12px; color:var(--fg); background:transparent;
+           font:13px/1.5 ui-monospace,Menlo,Consolas,monospace; }
+  #stdin:disabled { opacity:.5; cursor:not-allowed; }
+  #stdin:focus-visible { box-shadow:inset 0 0 0 2px var(--accent); }
+  #console { flex:1; margin:0; padding:8px 12px; overflow:auto; white-space:pre-wrap;
+             font:13px/1.5 ui-monospace,Menlo,Consolas,monospace; }
+  .msg-err { color:var(--err); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Java Editor<small id="credit">Produced by Hidekazu Sato</small></h1>
+  <span id="status">エディターを読み込み中…</span>
+  <label class="lab">実行クラス <select id="mainSel"></select></label>
+  <button class="sub" id="newProject" type="button">新規プロジェクト</button>
+  <select id="samples" aria-label="サンプルを選ぶ"><option value="">サンプルを選ぶ…</option></select>
+  <button class="sub" id="slideBtn" type="button" aria-pressed="false" hidden>教材</button>
+  <button class="sub" id="treeBtn" type="button" aria-pressed="false">一覧</button>
+  <button class="sub" id="open" type="button">ファイルを開く</button>
+  <button class="sub" id="save" type="button">ファイルを保存 (Ctrl+S)</button>
+  <button class="sub" id="zipOpen" type="button">ZIPを開く</button>
+  <button class="sub" id="zipSave" type="button">ZIPで保存</button>
+  <input type="file" id="file" accept=".java,.txt" hidden>
+  <input type="file" id="zipFile" accept=".zip" hidden>
+  <button id="run" type="button" disabled>実行 (Ctrl+Enter)</button>
+</header>
+<div id="split">
+  <section id="slides" hidden aria-label="教材スライド">
+    <div id="sbar">
+      <select id="chap" aria-label="章を選ぶ"></select>
+      <button class="sub" id="prev" type="button" aria-label="前のスライド">◀</button>
+      <input id="pageNo" type="number" min="1" value="1" aria-label="ページ番号">
+      <span class="lab">/ <span id="pageMax"></span></span>
+      <button class="sub" id="next" type="button" aria-label="次のスライド">▶</button>
+    </div>
+    <div id="sview"><img id="simg" alt="教材スライド" draggable="false"><div id="smsg"></div></div>
+  </section>
+  <div id="gutter" hidden role="separator" aria-orientation="vertical" title="ドラッグで幅を変更"></div>
+<main>
+  <div id="work">
+    <aside id="tree" hidden><div class="head">ファイル一覧</div><div id="treeList"></div></aside>
+    <div id="pane"><div id="tabs"></div><div id="editor"></div></div>
+  </div>
+  <div id="bottom">
+    <section id="in-wrap">
+      <div class="head">標準入力（Scanner 用。実行前に1行ずつ入力）</div>
+      <textarea id="stdin" spellcheck="false" placeholder="例:&#10;10&#10;20"></textarea>
+    </section>
+    <section id="out-wrap">
+      <div class="head">出力</div>
+      <pre id="console"></pre>
+    </section>
+  </div>
+</main>
+</div>
+
+<script src="https://cjrtnc.leaningtech.com/4.2/loader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+// ================= サンプル =================
+const BLANK = `public class Main {
+    public static void main(String[] args) {
+        
+    }
+}
+`;
+const one = (name, code, input) => ({ name, input, files: [{ path: "Main.java", content: code }] });
+const SAMPLES = [
+  one("基本：合計", `public class Main {
+    public static void main(String[] args) {
+        int sum = 0;
+        for (int i = 1; i <= 10; i++) {
+            sum += i;
+        }
+        System.out.println("Hello, Java!");
+        System.out.println("1から10の合計: " + sum);
+    }
+}
+`),
+  one("繰り返し：FizzBuzz", `public class Main {
+    public static void main(String[] args) {
+        for (int i = 1; i <= 15; i++) {
+            if (i % 15 == 0) {
+                System.out.println("FizzBuzz");
+            } else if (i % 3 == 0) {
+                System.out.println("Fizz");
+            } else if (i % 5 == 0) {
+                System.out.println("Buzz");
+            } else {
+                System.out.println(i);
+            }
+        }
+    }
+}
+`),
+  one("入力：Scanner", `import java.util.Scanner;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        int a = sc.nextInt();
+        int b = sc.nextInt();
+        System.out.println(a + " + " + b + " = " + (a + b));
+    }
+}
+`, "10\n20\n"),
+  one("配列：平均と最高点", `public class Main {
+    public static void main(String[] args) {
+        int[] scores = {72, 85, 90, 64, 78};
+        int sum = 0;
+        int max = scores[0];
+        for (int s : scores) {
+            sum += s;
+            if (s > max) {
+                max = s;
+            }
+        }
+        System.out.println("合計: " + sum);
+        System.out.println("平均: " + (double) sum / scores.length);
+        System.out.println("最高点: " + max);
+    }
+}
+`),
+  one("クラス：オブジェクト", `public class Main {
+    static class Counter {
+        private int count = 0;
+
+        void increment() {
+            count++;
+        }
+
+        int getCount() {
+            return count;
+        }
+    }
+
+    public static void main(String[] args) {
+        Counter c = new Counter();
+        for (int i = 0; i < 5; i++) {
+            c.increment();
+        }
+        System.out.println("カウント: " + c.getCount());
+    }
+}
+`),
+  { name: "パッケージ：複数ファイル", files: [
+    { path: "Main.java", content: `import util.MathUtil;
+
+public class Main {
+    public static void main(String[] args) {
+        System.out.println("2 の 10 乗: " + MathUtil.power(2, 10));
+        System.out.println("5 の階乗: " + MathUtil.factorial(5));
+    }
+}
+` },
+    { path: "util/MathUtil.java", content: `package util;
+
+public class MathUtil {
+    public static int power(int base, int exp) {
+        int result = 1;
+        for (int i = 0; i < exp; i++) {
+            result *= base;
+        }
+        return result;
+    }
+
+    public static int factorial(int n) {
+        int result = 1;
+        for (int i = 2; i <= n; i++) {
+            result *= i;
+        }
+        return result;
+    }
+}
+` },
+    { path: "app/Hello.java", content: `package app;
+
+public class Hello {
+    public static void greet() {
+        System.out.println("Hello!");
+    }
+
+    public static void main(String[] args) {
+        greet();
+    }
+}
+` } ] },
+  { name: "パッケージ：階層構造", files: [
+    { path: "com/example/app/Main.java", content: `package com.example.app;
+
+import com.example.util.Greeter;
+
+public class Main {
+    public static void main(String[] args) {
+        Greeter g = new Greeter("Java");
+        System.out.println(g.greet());
+    }
+}
+` },
+    { path: "com/example/util/Greeter.java", content: `package com.example.util;
+
+public class Greeter {
+    private final String name;
+
+    public Greeter(String name) {
+        this.name = name;
+    }
+
+    public String greet() {
+        return "Hello, " + name + "!";
+    }
+}
+` } ] },
+  { name: "パッケージ：同名ファイル", files: [
+    { path: "Main.java", content: `public class Main {
+    public static void main(String[] args) {
+        System.out.println(a.Util.name());
+        System.out.println(b.Util.name());
+    }
+}
+` },
+    { path: "a/Util.java", content: `package a;
+
+public class Util {
+    public static String name() {
+        return "a.Util";
+    }
+}
+` },
+    { path: "b/Util.java", content: `package b;
+
+public class Util {
+    public static String name() {
+        return "b.Util";
+    }
+}
+` } ] }
+];
+
+// ================= 共通 =================
+const PKEY = "java-editor:project", OLDKEY = "java-editor:code";
+const $ = id => document.getElementById(id);
+const statusEl = $("status"), runBtn = $("run"), consoleEl = $("console");
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// CheerpJ の /app/ はサイトのルート。サブフォルダ公開（user.github.io/repo/）でも動くようパスを補う
+const APP = "/app" + location.pathname.replace(/[^/]*$/, "");
+const PATH_RE = /^[A-Za-z_$][\w$]*(\/[A-Za-z_$][\w$]*)*\.java$/;
+let editor, cheerpReady = false, running = false, files = [], active = null, rev = 0;
+let checkTimer, checking = false, checkOff = false;
+let folderMode;               // true: フォルダ付きパスでコンパイル / false: 平坦（同名ファイル不可） / undefined: 未判定
+const collapsed = new Set(), TKEY = "java-editor:tree";
+const dupBase = arr => { const n = arr.map(f => base(f.path)); return n.find((x, i) => n.indexOf(x) !== i); };
+
+const setStatus = t => { statusEl.textContent = t; };
+const base = p => p.slice(p.lastIndexOf("/") + 1);
+const strip = src => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+const usesStdinSrc = src => /\bSystem\s*\.\s*in\b/.test(strip(src));
+const hasMain = src => /static\s+void\s+main\s*\(/.test(strip(src));
+function pkgOf(src) { const m = strip(src).match(/^\s*package\s+([\w.]+)\s*;/m); return m ? m[1] : ""; }
+function detectClass(src) {
+  const m = src.match(/public\s+(?:final\s+)?class\s+([A-Za-z_$][\w$]*)/)
+         || src.match(/class\s+([A-Za-z_$][\w$]*)(?=[^{]*\{[\s\S]*?static\s+void\s+main)/);
+  return m ? m[1] : "Main";
+}
+function fqnOf(src) { const p = pkgOf(src), c = detectClass(src); return p ? p + "." + c : c; }
+
+// ================= ファイル管理 =================
+function addFile(path, content) {
+  const f = { path, model: monaco.editor.createModel(content, "java"), errs: 0 };
+  f.model.onDidChangeContent(onEdit);
+  files.push(f);
+  return f;
+}
+function onEdit() {
+  rev++; updateStdin(); updateMains(); saveProject(); scheduleCheck();
+}
+function activate(f) {
+  active = f; editor.setModel(f.model); updateMains(); renderTabs(); saveProject(); editor.focus();
+}
+function loadFiles(list, activeIdx, mainName, autoTree) {
+  files.forEach(f => f.model.dispose());
+  files = []; active = null;
+  list.forEach(x => addFile(x.path, x.content));
+  rev++;
+  updateMains();
+  const sel = $("mainSel");
+  if (mainName && [...sel.options].some(o => o.value === mainName)) sel.value = mainName;
+  activate(files[Math.min(activeIdx || 0, files.length - 1)]);
+  updateStdin(); scheduleCheck();
+  if (autoTree && list.length > 1) setTree(true, false);
+}
+function validatePath(path, self) {
+  if (!PATH_RE.test(path)) return "ファイル名は英数字と _ のみで、フォルダは / で区切り、末尾を .java にしてください。";
+  if (files.some(f => f !== self && f.path === path)) return "同じ名前のファイルがあります。";
+  if (folderMode === false && files.some(f => f !== self && base(f.path) === base(path))) return "フォルダが違っても、同じ名前のファイルは現在使えません。";
+  return "";
+}
+function newFile() {
+  const input = prompt("ファイル名（フォルダは / で区切る。例: util/Helper.java）", "NewClass.java");
+  if (!input) return;
+  let path = input.trim(); if (!path.endsWith(".java")) path += ".java";
+  const err = validatePath(path); if (err) { alert(err); return; }
+  const parts = path.split("/"), cls = parts.pop().replace(/\.java$/, ""), pkg = parts.join(".");
+  const f = addFile(path, (pkg ? "package " + pkg + ";\n\n" : "") + "public class " + cls + " {\n}\n");
+  rev++; activate(f); updateMains(); scheduleCheck();
+}
+function renameFile(f) {
+  const input = prompt("新しいファイル名（フォルダは / で区切る）", f.path);
+  if (!input || input.trim() === f.path) return;
+  const path = input.trim(), err = validatePath(path, f); if (err) { alert(err); return; }
+  f.path = path; rev++; renderTabs(); updateMains(); saveProject(); scheduleCheck();
+}
+function deleteFiles(list, label) {
+  if (!list.length) return;
+  if (list.length >= files.length) { alert("最後のファイルは削除できません。"); return; }
+  if (!confirm(label + "を削除します。よろしいですか？")) return;
+  const idx = files.indexOf(active), wasActive = list.includes(active);
+  files = files.filter(f => !list.includes(f));
+  list.forEach(f => f.model.dispose());
+  rev++;
+  if (wasActive) activate(files[Math.min(idx, files.length - 1)]); else { renderTabs(); saveProject(); }
+  updateMains(); updateStdin(); scheduleCheck();
+}
+function deleteFile(f) { deleteFiles([f], "「" + f.path + "」"); }
+function btn(txt, label, fn) {
+  const b = document.createElement("button");
+  b.type = "button"; b.textContent = txt; b.title = label; b.setAttribute("aria-label", label); b.onclick = fn;
+  return b;
+}
+function renderTabs() {
+  const box = $("tabs"); box.textContent = "";
+  files.forEach(f => {
+    const t = document.createElement("div");
+    t.className = "tab" + (f === active ? " active" : "") + (f.errs ? " err" : "");
+    const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = f.path; t.appendChild(nm);
+    t.onclick = () => activate(f);
+    if (f === active) {
+      t.appendChild(btn("✎", "名前を変更", e => { e.stopPropagation(); renameFile(f); }));
+      if (files.length > 1) t.appendChild(btn("×", "削除", e => { e.stopPropagation(); deleteFile(f); }));
+    }
+    box.appendChild(t);
+  });
+  const add = document.createElement("button");
+  add.id = "add"; add.className = "sub"; add.type = "button"; add.textContent = "＋"; add.title = "ファイルを追加"; add.setAttribute("aria-label", "ファイルを追加");
+  add.onclick = newFile; box.appendChild(add);
+  renderTree();
+}
+const AUTO = "__active__";
+const mainList = () => files.map(f => f.model.getValue()).filter(hasMain).map(fqnOf);
+const activeHasMain = () => !!active && !active.model.isDisposed() && hasMain(active.model.getValue());
+// 実行するクラスを決める。「表示中のファイル」が選ばれていて main が無ければ、Main（なければ最初のクラス）にする
+function resolveMain() {
+  const v = $("mainSel").value;
+  if (v !== AUTO) return v;
+  if (activeHasMain()) return fqnOf(active.model.getValue());
+  const list = mainList();
+  return list.includes("Main") ? "Main" : (list[0] || "");
+}
+function setTree(open, persist) {
+  $("tree").hidden = !open; $("treeBtn").setAttribute("aria-pressed", String(open));
+  if (persist) { try { localStorage.setItem(TKEY, open ? "1" : "0"); } catch {} }
+}
+function renderTree() {
+  const box = $("treeList"); box.textContent = "";
+  const root = { dirs: {}, files: [] };
+  files.forEach(f => {
+    let n = root;
+    f.path.split("/").slice(0, -1).forEach(d => { n = n.dirs[d] || (n.dirs[d] = { dirs: {}, files: [] }); });
+    n.files.push(f);
+  });
+  const row = (cls, text, depth, fn, del) => {
+    const w = document.createElement("div"); w.className = "rw";
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "row " + cls; b.textContent = text;
+    b.style.paddingLeft = (8 + depth * 14) + "px"; b.onclick = fn; w.appendChild(b);
+    if (del && files.length > 1) {
+      const x = document.createElement("button");
+      x.type = "button"; x.className = "del"; x.textContent = "×"; x.title = del.title; x.setAttribute("aria-label", del.title);
+      x.onclick = e => { e.stopPropagation(); del.fn(); }; w.appendChild(x);
+    }
+    box.appendChild(w); return b;
+  };
+  const walk = (n, prefix, depth) => {
+    Object.keys(n.dirs).sort().forEach(d => {
+      const key = prefix + d + "/", open = !collapsed.has(key);
+      row("dir", (open ? "▾ " : "▸ ") + d, depth, () => { open ? collapsed.add(key) : collapsed.delete(key); renderTree(); },
+        { title: "フォルダごと削除", fn: () => {
+          const t = files.filter(f => f.path.startsWith(key));
+          deleteFiles(t, "「" + key + "」フォルダ内の " + t.length + " ファイル");
+        } });
+      if (open) walk(n.dirs[d], key, depth + 1);
+    });
+    n.files.sort((a, b) => base(a.path).localeCompare(base(b.path))).forEach(f =>
+      row((f === active ? "active " : "") + (f.errs ? "err" : ""), base(f.path), depth, () => activate(f), { title: "ファイルを削除", fn: () => deleteFile(f) }));
+  };
+  walk(root, "", 0);
+}
+function updateMains() {
+  const sel = $("mainSel"), prev = sel.value || AUTO, list = mainList();
+  sel.textContent = "";
+  sel.add(new Option("表示中のファイル（" + (resolveMainFor(list) || "実行不可") + "）", AUTO));
+  list.forEach(n => sel.add(new Option(n, n)));
+  sel.value = (prev === AUTO || list.includes(prev)) ? prev : AUTO;
+}
+function resolveMainFor(list) {
+  if (activeHasMain()) return fqnOf(active.model.getValue());
+  return list.includes("Main") ? "Main" : (list[0] || "");
+}
+// 標準入力（System.in）を使うコードがあるときだけ、入力欄を有効にする
+function updateStdin() {
+  const on = files.some(f => usesStdinSrc(f.model.getValue())), t = $("stdin");
+  t.disabled = !on;
+  t.placeholder = on ? "例:\n10\n20" : "このコードは標準入力（System.in）を使っていないため、入力できません";
+}
+
+// ================= 保存（ブラウザ内）・ファイル入出力 =================
+function saveProject() {
+  if (!active) return;
+  try {
+    localStorage.setItem(PKEY, JSON.stringify({
+      files: files.map(f => ({ path: f.path, content: f.model.getValue() })),
+      active: files.indexOf(active), main: $("mainSel").value }));
+  } catch {}
+}
+function readProject() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PKEY));
+    if (p && Array.isArray(p.files) && p.files.length && p.files.every(f => PATH_RE.test(f.path) && typeof f.content === "string")) return p;
+  } catch {}
+  try {
+    const old = localStorage.getItem(OLDKEY);
+    if (old) return { files: [{ path: "Main.java", content: old }], active: 0 };
+  } catch {}
+  return { files: SAMPLES[0].files, active: 0 };
+}
+// ZIP 用の部品（JSZip）は、Monaco のローダー（AMD 方式）経由で読み込む。
+// 普通の <script> で読むと、AMD ローダーに邪魔されて JSZip という名前で使えなくなるため
+async function ensureZip() {
+  if (typeof JSZip !== "undefined") return true;
+  for (const u of ["https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js",
+                   "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"]) {
+    try {
+      const m = await new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error("timeout")), 15000);
+        require([u], x => { clearTimeout(t); resolve(x); }, e => { clearTimeout(t); reject(e); });
+      });
+      if (typeof m === "function") { window.JSZip = m; return true; }
+      if (typeof JSZip !== "undefined") return true;
+    } catch {}
+  }
+  return false;
+}
+const ZIP_NG = "ZIP 用の部品を読み込めませんでした。\nネットワーク接続を確認してください（cdn.jsdelivr.net または cdnjs.cloudflare.com へのアクセスが必要です）。";
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function download() {
+  if (!active) return;
+  const name = base(active.path);
+  downloadBlob(new Blob([active.model.getValue()], { type: "text/plain;charset=utf-8" }), name);
+  setStatus(name + " を保存しました");
+}
+async function saveZip() {
+  if (!(await ensureZip())) { alert(ZIP_NG); return; }
+  const z = new JSZip();
+  files.forEach(f => z.file(f.path, f.model.getValue()));
+  downloadBlob(await z.generateAsync({ type: "blob" }), "java-project.zip");
+  setStatus("java-project.zip を保存しました（" + files.length + " ファイル）");
+}
+// ZIP 内の配置に関わらず、各ファイルの package 宣言からフォルダ位置を決める
+async function openZip(file) {
+  if (!(await ensureZip())) { alert(ZIP_NG); return; }
+  let z;
+  try { z = await JSZip.loadAsync(file); } catch { alert("ZIP を読み込めませんでした。"); return; }
+  const found = new Map(); let skipped = 0;
+  const entries = Object.values(z.files).filter(e => !e.dir && /\.java$/i.test(e.name)
+    && !e.name.split("/").some(s => s.startsWith(".") || s === "__MACOSX"));
+  for (const e of entries) {
+    const text = await e.async("string"), pkg = pkgOf(text);
+    const path = (pkg ? pkg.replace(/\./g, "/") + "/" : "") + base(e.name);
+    if (PATH_RE.test(path)) found.set(path, text); else skipped++;
+  }
+  if (!found.size) { alert("読み込める .java ファイルが見つかりませんでした。"); return; }
+  if (!confirm("現在のファイルをすべて破棄して、ZIP 内の " + found.size + " ファイルを読み込みます。よろしいですか？")) return;
+  const list = [...found].map(([path, content]) => ({ path, content }));
+  loadFiles(list, Math.max(0, list.findIndex(x => x.path === "Main.java")), undefined, true);
+  consoleEl.textContent = "";
+  setStatus(found.size + " ファイルを読み込みました" + (skipped ? "（" + skipped + " ファイルは名前が使えないため除外）" : ""));
+}
+async function openLocal(file) {
+  const text = await file.text();
+  const pkg = pkgOf(text);
+  const path = (pkg ? pkg.replace(/\./g, "/") + "/" : "") + file.name;
+  if (!PATH_RE.test(path)) { alert("このファイル名は使えません: " + path); return; }
+  const same = files.find(f => f.path === path);
+  if (same) {
+    if (!confirm("「" + path + "」を上書きします。よろしいですか？")) return;
+    same.model.pushEditOperations([], [{ range: same.model.getFullModelRange(), text }], () => null);
+    activate(same);
+  } else {
+    const err = validatePath(path); if (err) { alert(err); return; }
+    const f = addFile(path, text); rev++; activate(f); updateMains(); scheduleCheck();
+  }
+  setStatus(path + " を開きました");
+}
+
+// ================= リアルタイム構文チェック =================
+function scheduleCheck() { clearTimeout(checkTimer); checkTimer = setTimeout(check, 1200); }
+function parseDiag(text) {
+  const L = text.split(/\r?\n/), out = [];
+  for (let i = 0; i < L.length; i++) {
+    const m = L[i].match(/^(.+?\.java):(\d+): (error|warning): (.*)$/);
+    if (!m) continue;
+    let msg = m[4], col = 1, j = i + 1;
+    if (j + 1 < L.length && /^\s*\^/.test(L[j + 1])) { col = L[j + 1].indexOf("^") + 1; j += 2; }
+    while (j < L.length && !/\.java:\d+: /.test(L[j]) && !/^\d+ errors?$/.test(L[j])) {
+      if (L[j].trim()) msg += "\n" + L[j].trim();
+      j++;
+    }
+    if (m[3] === "error") out.push({ file: m[1], line: +m[2], col, msg });
+    i = j - 1;
+  }
+  return out;
+}
+function toMarkers(model, diags) {
+  return diags.filter(d => d.line <= model.getLineCount()).map(d => {
+    const max = model.getLineMaxColumn(d.line);
+    const w = model.getWordAtPosition({ lineNumber: d.line, column: d.col });
+    let start = d.col, end = (w && w.startColumn === d.col) ? w.endColumn : d.col + 1;
+    if (start >= max) { start = Math.max(1, max - 1); end = max; }
+    return { severity: monaco.MarkerSeverity.Error, message: d.msg,
+             startLineNumber: d.line, startColumn: start, endLineNumber: d.line, endColumn: Math.min(end, max) };
+  });
+}
+// フォルダ付きで渡す方式：/str/ にはフォルダを作れないため、いったん Java 側（IdeSync__）が
+// /files/__src/ 以下にフォルダ構造どおりにソースを書き出し、javac にはそのパスを渡す
+const SRC = "/files/__src/";
+const SYNC_SRC = String.raw`import java.io.*;
+public class IdeSync__ {
+  static void rm(File f) {
+    File[] c = f.listFiles();
+    if (c != null) for (File x : c) rm(x);
+    f.delete();
+  }
+  static byte[] read(String p) throws IOException {
+    try (FileInputStream in = new FileInputStream(p)) {
+      ByteArrayOutputStream bo = new ByteArrayOutputStream();
+      byte[] b = new byte[8192];
+      int n;
+      while ((n = in.read(b)) > 0) bo.write(b, 0, n);
+      return bo.toByteArray();
+    }
+  }
+  public static void main(String[] a) throws Exception {
+    rm(new File("/files/__src"));
+    String[] paths = new String(read("/str/manifest.dat"), "UTF-8").split("\n");
+    for (int i = 0; i < paths.length; i++) {
+      if (paths[i].isEmpty()) continue;
+      File out = new File("/files/__src/" + paths[i]);
+      out.getParentFile().mkdirs();
+      try (FileOutputStream o = new FileOutputStream(out)) { o.write(read("/str/src" + i + ".dat")); }
+    }
+  }
+}
+`;
+let syncReady = false, folderWhy = "";
+const JAVAC = "com.sun.tools.javac.Main";
+async function ensureSync() {
+  if (syncReady) return;
+  cheerpOSAddStringFile("/str/IdeSync__.java", SYNC_SRC);
+  const rc = await cheerpjRunMain(JAVAC, APP + "tools.jar", "-Xstdout", "/files/diag.txt", "-d", "/files/", "/str/IdeSync__.java");
+  if (rc !== 0) throw new Error("同期用クラスのコンパイルに失敗");
+  syncReady = true;
+}
+async function viaFolders(snap, extra, opts) {
+  await ensureSync();
+  snap.forEach((f, i) => cheerpOSAddStringFile("/str/src" + i + ".dat", f.model.getValue()));
+  cheerpOSAddStringFile("/str/manifest.dat", snap.map(f => f.path).join("\n"));
+  if (await cheerpjRunMain("IdeSync__", "/files/") !== 0) throw new Error("ソースの書き出しに失敗");
+  extra.forEach(x => cheerpOSAddStringFile("/str/" + x.name, x.src));
+  const rc = await cheerpjRunMain(JAVAC, APP + "tools.jar", "-Xstdout", "/files/diag.txt", ...opts,
+    ...snap.map(f => SRC + f.path), ...extra.map(x => "/str/" + x.name), "-d", "/files/");
+  const text = await (await cjFileBlob("/files/diag.txt")).text();
+  if (/file not found|cannot read|No such file/i.test(text)) throw new Error("javac がソースを読めない");
+  return { rc, text };
+}
+// 平坦な名前で渡す方式（フォルダ方式が使えないときの代替。同名ファイルは使えない）
+async function viaFlat(snap, extra, opts) {
+  const dup = dupBase(snap);
+  if (dup) return { rc: 1, text: "", dup, why: folderWhy };
+  const key = f => "/str/" + base(f.path);
+  snap.forEach(f => cheerpOSAddStringFile(key(f), f.model.getValue()));
+  extra.forEach(x => cheerpOSAddStringFile("/str/" + x.name, x.src));
+  const rc = await cheerpjRunMain(JAVAC, APP + "tools.jar", "-Xstdout", "/files/diag.txt", ...opts,
+    ...snap.map(key), ...extra.map(x => "/str/" + x.name), "-d", "/files/");
+  return { rc, text: await (await cjFileBlob("/files/diag.txt")).text() };
+}
+// javac を実行して { rc, text } を返す
+async function compile(snap, extra, opts) {
+  if (folderMode !== false) {
+    try { const r = await viaFolders(snap, extra, opts); folderMode = true; return r; }
+    catch (e) { folderMode = false; folderWhy = String(e.message || e); consoleEl.textContent = ""; }
+  }
+  return viaFlat(snap, extra, opts);
+}
+async function check() {
+  if (!cheerpReady || running || checking || checkOff || !editor) return;
+  checking = true;
+  const myRev = rev, snap = [...files];
+  try {
+    const r = await compile(snap, [], ["-proc:none"]);
+    if (!r.dup && rev === myRev) {
+      const diags = parseDiag(r.text);
+      snap.forEach(f => {
+        const key = folderMode ? SRC + f.path : "/str/" + base(f.path);
+        const mine = diags.filter(d => d.file === key);
+        f.errs = mine.length;
+        monaco.editor.setModelMarkers(f.model, "javac", toMarkers(f.model, mine));
+      });
+      renderTabs();
+    }
+  } catch (e) {
+    checkOff = true; consoleEl.textContent = "";
+    setStatus("リアルタイム構文チェックは使えません（実行は可能です）");
+  } finally { checking = false; }
+}
+
+// ================= Monaco =================
+const MONACO_BASE = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min";
+require.config({ paths: { vs: MONACO_BASE + "/vs" } });
+self.MonacoEnvironment = {
+  getWorkerUrl: () => URL.createObjectURL(new Blob(
+    [`self.MonacoEnvironment={baseUrl:'${MONACO_BASE}/'};importScripts('${MONACO_BASE}/vs/base/worker/workerMain.js');`],
+    { type: "text/javascript" }))
+};
+require(["vs/editor/editor.main"], () => {
+  editor = monaco.editor.create($("editor"), {
+    model: null, theme: "vs-dark", automaticLayout: true,
+    fontSize: 14, minimap: { enabled: false }, tabSize: 4, scrollBeyondLastLine: false
+  });
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, run);
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, download);
+  const p = readProject();
+  loadFiles(p.files, p.active, p.main, false);
+  let t = null; try { t = localStorage.getItem(TKEY); } catch {}
+  setTree(t === null ? files.length > 1 : t === "1", false);
+  initJava();
+});
+
+// ================= CheerpJ（コンパイルと実行） =================
+async function initJava() {
+  if (location.protocol === "file:") {
+    setStatus("サーバー経由で開いてください");
+    consoleEl.textContent = "CheerpJ は file:// では動きません。同梱の serve.mjs を使い、http://localhost:8080/ で開いてください。";
+    return;
+  }
+  try {
+    const r = await fetch("tools.jar", { method: "HEAD" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+  } catch (e) {
+    setStatus("tools.jar が見つかりません");
+    consoleEl.textContent = "このHTMLと同じフォルダに tools.jar（OpenJDK 8 の javac）を置いてください。";
+    return;
+  }
+  setStatus("Java を準備中…（初回は時間がかかります）");
+  try {
+    await cheerpjInit({ version: 8 });
+    cheerpReady = true;
+    runBtn.disabled = false;
+    setStatus("準備完了");
+    scheduleCheck();
+  } catch (e) {
+    setStatus("Java の初期化に失敗しました");
+    consoleEl.innerHTML = '<span class="msg-err">CheerpJ を読み込めませんでした。ネットワーク接続と、loader.js のバージョンを確認してください。\n' + String(e) + "</span>";
+  }
+}
+
+async function run() {
+  if (!cheerpReady || running || !editor) return;
+  running = true; runBtn.disabled = true;
+  consoleEl.textContent = "";
+  while (checking) await sleep(100);
+  try {
+    const main = resolveMain();
+    let note = "";
+    if ($("mainSel").value === AUTO && main && !activeHasMain()) {
+      note = "（表示中のファイルに main がないため、" + main + " を実行します）\n\n";
+      consoleEl.textContent = note;
+    }
+    if (!main) {
+      consoleEl.textContent = "実行できるクラスがありません。\npublic static void main(String[] args) を持つクラスが必要です。";
+      setStatus("実行できません"); return;
+    }
+    const needIn = files.some(f => usesStdinSrc(f.model.getValue()));
+    let b64 = "";
+    for (const b of new TextEncoder().encode(needIn ? $("stdin").value : "")) b64 += String.fromCharCode(b);
+    b64 = btoa(b64);
+    const launcher = `public class IdeLauncher__ {
+  public static void main(String[] a) throws Throwable {
+    System.setIn(new java.io.ByteArrayInputStream(java.util.Base64.getDecoder().decode("${b64}")));
+    ${main}.main(a);
+  }
+}`;
+    setStatus("コンパイル中…");
+    const r = await compile([...files], [{ name: "IdeLauncher__.java", src: launcher }], []);
+    if (r.dup) {
+      consoleEl.textContent = "同じ名前のファイルが複数あります: " + r.dup + "\nこの環境では、フォルダが違っても同名のファイルは使えません。\n（フォルダ方式を使えなかった理由: " + (r.why || "不明") + "）";
+      setStatus("実行できません"); return;
+    }
+    if (r.rc !== 0) {
+      setStatus("コンパイルエラー");
+      consoleEl.textContent = note + r.text.replace(/\/(?:str|files\/__src)\//g, "");
+      return;
+    }
+    setStatus("実行中：" + main);
+    await cheerpjRunMain("IdeLauncher__", "/files/");
+    setStatus("完了");
+  } catch (e) {
+    setStatus("実行エラー");
+    consoleEl.insertAdjacentHTML("beforeend", '<span class="msg-err">\n' + String(e).replace(/</g, "&lt;") + "</span>");
+  } finally {
+    running = false; runBtn.disabled = false;
+  }
+}
+
+// ================= 教材スライド =================
+// スライドは画像として表示する（文字として選択・コピーできない）。slides.bin に全画像をまとめ、必要なものだけ取得する
+const SKEY = "java-editor:page", SWKEY = "java-editor:slides", SPKEY = "java-editor:split";
+let sIndex = null, sPage = 1, sReq = 0;
+const sCache = new Map();
+async function fetchSlide(n) {
+  if (sCache.has(n)) return sCache.get(n);
+  const [o, l] = sIndex.slides[n - 1];
+  const r = await fetch("slides.bin", { headers: { Range: "bytes=" + o + "-" + (o + l - 1) } });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  let buf = await r.arrayBuffer();
+  let total = parseInt((r.headers.get("Content-Range") || "").split("/")[1], 10);
+  if (r.status === 200) { total = buf.byteLength; buf = buf.slice(o, o + l); }   // Range に対応しないサーバーの場合
+  if (sIndex.bytes && total && total !== sIndex.bytes)
+    throw new Error("slides.bin のサイズが違います（期待 " + sIndex.bytes + "、実際 " + total + "）");
+  const h = new Uint8Array(buf, 0, Math.min(12, buf.byteLength)), tag = (a, b) => String.fromCharCode(...h.slice(a, b));
+  if (tag(0, 4) !== "RIFF" || tag(8, 12) !== "WEBP") throw new Error("画像データの形式が違います（slides.bin と slides.json の版が違う可能性があります）");
+  const url = URL.createObjectURL(new Blob([buf], { type: "image/webp" }));
+  sCache.set(n, url);
+  if (sCache.size > 40) { const k = sCache.keys().next().value; URL.revokeObjectURL(sCache.get(k)); sCache.delete(k); }
+  return url;
+}
+function syncChap() {
+  let cur = sIndex.chapters[0];
+  sIndex.chapters.forEach(c => { if (c.page <= sPage) cur = c; });
+  $("chap").value = cur.page;
+}
+async function showSlide(n) {
+  n = Math.max(1, Math.min(sIndex.count, parseInt(n, 10) || 1));
+  sPage = n; const req = ++sReq;
+  $("pageNo").value = n; syncChap();
+  $("prev").disabled = n <= 1; $("next").disabled = n >= sIndex.count;
+  try { localStorage.setItem(SKEY, String(n)); } catch {}
+  try {
+    const url = await fetchSlide(n);
+    if (req !== sReq) return;
+    $("simg").src = url; $("smsg").textContent = "";
+  } catch (e) { if (req === sReq) $("smsg").textContent = "スライドを読み込めませんでした: " + (e && e.message || e); }
+  [n + 1, n - 1].forEach(m => { if (m >= 1 && m <= sIndex.count) fetchSlide(m).catch(() => {}); });
+}
+function setSlides(open, persist) {
+  $("slides").hidden = !open; $("gutter").hidden = !open; $("slideBtn").setAttribute("aria-pressed", String(open));
+  if (persist) { try { localStorage.setItem(SWKEY, open ? "1" : "0"); } catch {} }
+}
+async function initSlides() {
+  try {
+    const r = await fetch("slides.json");
+    if (!r.ok) throw new Error();
+    sIndex = await r.json();
+  } catch { return; }                                        // 教材データがなければ、エディターだけで使える
+  $("slideBtn").hidden = false;
+  $("pageMax").textContent = sIndex.count; $("pageNo").max = sIndex.count;
+  sIndex.chapters.forEach(c => $("chap").add(new Option(c.title, c.page)));
+  $("chap").addEventListener("change", () => showSlide($("chap").value));
+  $("prev").addEventListener("click", () => showSlide(sPage - 1));
+  $("next").addEventListener("click", () => showSlide(sPage + 1));
+  $("pageNo").addEventListener("change", () => showSlide($("pageNo").value));
+  $("slideBtn").addEventListener("click", () => setSlides($("slides").hidden, true));
+  $("sview").addEventListener("contextmenu", e => e.preventDefault());
+  document.addEventListener("keydown", e => {
+    if ($("slides").hidden || e.target.closest("input, textarea, select, .monaco-editor") || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "ArrowRight" || e.key === "PageDown") { e.preventDefault(); showSlide(sPage + 1); }
+    if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); showSlide(sPage - 1); }
+  });
+  // 左右の幅をドラッグで変更
+  const g = $("gutter"); let drag = false;
+  g.addEventListener("pointerdown", e => { drag = true; g.setPointerCapture(e.pointerId); });
+  g.addEventListener("pointermove", e => {
+    if (!drag) return;
+    const box = $("split").getBoundingClientRect();
+    const pct = Math.min(75, Math.max(25, (e.clientX - box.left) / box.width * 100));
+    $("slides").style.flexBasis = pct + "%";
+  });
+  g.addEventListener("pointerup", () => {
+    drag = false;
+    try { localStorage.setItem(SPKEY, $("slides").style.flexBasis); } catch {}
+  });
+  let w = null, pg = null, sp = null;
+  try { w = localStorage.getItem(SWKEY); pg = localStorage.getItem(SKEY); sp = localStorage.getItem(SPKEY); } catch {}
+  if (sp) $("slides").style.flexBasis = sp;
+  setSlides(w !== "0", false);
+  showSlide(pg || 1);
+}
+
+// ================= 画面の操作 =================
+runBtn.addEventListener("click", run);
+$("save").addEventListener("click", download);
+$("open").addEventListener("click", () => $("file").click());
+$("file").addEventListener("change", e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (f && editor) openLocal(f);
+});
+$("mainSel").addEventListener("change", saveProject);
+$("newProject").addEventListener("click", () => {
+  if (!editor) return;
+  if (!confirm("現在のファイルをすべて破棄して、空のプロジェクトを始めます。\n必要なら、先に ZIP で保存してください。よろしいですか？")) return;
+  loadFiles([{ path: "Main.java", content: BLANK }], 0, undefined, false);
+  $("stdin").value = ""; consoleEl.textContent = "";
+  setStatus("新しいプロジェクトを始めました");
+});
+$("treeBtn").addEventListener("click", () => setTree($("tree").hidden, true));
+$("zipSave").addEventListener("click", saveZip);
+$("zipOpen").addEventListener("click", () => $("zipFile").click());
+$("zipFile").addEventListener("change", e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (f && editor) openZip(f);
+});
+const sel = $("samples");
+SAMPLES.forEach((x, i) => sel.add(new Option(x.name, i)));
+sel.addEventListener("change", () => {
+  const x = SAMPLES[sel.value]; sel.value = "";
+  if (!x || !editor) return;
+  if (!confirm("現在のファイルをすべて破棄して、「" + x.name + "」のサンプルに置き換えます。よろしいですか？")) return;
+  loadFiles(x.files.map(f => ({ path: f.path, content: f.content })), 0, undefined, true);
+  $("stdin").value = x.input || "";
+  consoleEl.textContent = "";
+  setStatus("サンプルを読み込みました");
+});
+initSlides();
+</script>
+</body>
+</html>
