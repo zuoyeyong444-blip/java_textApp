@@ -74,6 +74,9 @@
   #console { flex:1; margin:0; padding:8px 12px; overflow:auto; white-space:pre-wrap;
              font:13px/1.5 ui-monospace,Menlo,Consolas,monospace; }
   .msg-err { color:var(--err); }
+  :root[data-theme="light"] { --bg:#ffffff; --panel:#f1f3f6; --line:#d5d9e0; --fg:#1f2430; --dim:#677085; --accent:#e08a00; --err:#c62828; }
+  #stdin, #console { font-size:var(--fs,13px); }
+  #slides:fullscreen { background:#0e1014; }
 </style>
 </head>
 <body>
@@ -89,9 +92,17 @@
   <button class="sub" id="save" type="button">ファイルを保存 (Ctrl+S)</button>
   <button class="sub" id="zipOpen" type="button">ZIPを開く</button>
   <button class="sub" id="zipSave" type="button">ZIPで保存</button>
+  <button class="sub" id="zipSubmit" type="button">提出用ZIP</button>
+  <button class="sub" id="wipe" type="button" title="このブラウザに保存された作業データを消去します">データ消去</button>
   <input type="file" id="file" accept=".java,.txt" hidden>
   <input type="file" id="zipFile" accept=".zip" hidden>
+  <span class="lab">
+    <button class="sub" id="fsMinus" type="button" aria-label="文字を小さく">A−</button>
+    <button class="sub" id="fsPlus" type="button" aria-label="文字を大きく">A＋</button>
+    <button class="sub" id="themeBtn" type="button" aria-label="明るい／暗いテーマの切り替え">テーマ</button>
+  </span>
   <button id="run" type="button" disabled>実行 (Ctrl+Enter)</button>
+  <button class="sub" id="reset" type="button" hidden title="実行が止まらないときに、コードを保存して画面を再読み込みします">強制リセット</button>
 </header>
 <div id="split">
   <section id="slides" hidden aria-label="教材スライド">
@@ -101,6 +112,7 @@
       <input id="pageNo" type="number" min="1" value="1" aria-label="ページ番号">
       <span class="lab">/ <span id="pageMax"></span></span>
       <button class="sub" id="next" type="button" aria-label="次のスライド">▶</button>
+      <button class="sub" id="full" type="button" aria-label="スライドを全画面で表示">拡大</button>
     </div>
     <div id="sview"><img id="simg" alt="教材スライド" draggable="false"><div id="smsg"></div></div>
   </section>
@@ -209,6 +221,14 @@ public class Main {
             c.increment();
         }
         System.out.println("カウント: " + c.getCount());
+    }
+}
+`),
+  one("動作確認：無限ループ（自動停止）", `public class Main {
+    public static void main(String[] args) {
+        System.out.println("無限ループを開始します（約15秒で自動停止します）");
+        while (true) {
+        }
     }
 }
 `),
@@ -707,8 +727,8 @@ self.MonacoEnvironment = {
 };
 require(["vs/editor/editor.main"], () => {
   editor = monaco.editor.create($("editor"), {
-    model: null, theme: "vs-dark", automaticLayout: true,
-    fontSize: 14, minimap: { enabled: false }, tabSize: 4, scrollBeyondLastLine: false
+    model: null, theme: document.documentElement.dataset.theme === "light" ? "vs" : "vs-dark", automaticLayout: true,
+    fontSize, minimap: { enabled: false }, tabSize: 4, scrollBeyondLastLine: false
   });
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, run);
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, download);
@@ -749,7 +769,7 @@ async function initJava() {
 
 async function run() {
   if (!cheerpReady || running || !editor) return;
-  running = true; runBtn.disabled = true;
+  running = true; runBtn.disabled = true; $("reset").hidden = false;
   consoleEl.textContent = "";
   while (checking) await sleep(100);
   try {
@@ -770,11 +790,15 @@ async function run() {
     const launcher = `public class IdeLauncher__ {
   public static void main(String[] a) throws Throwable {
     System.setIn(new java.io.ByteArrayInputStream(java.util.Base64.getDecoder().decode("${b64}")));
+    ide__guard.IdeGuard__.begin(${RUN_LIMIT_MS}L);
     ${main}.main(a);
   }
 }`;
     setStatus("コンパイル中…");
-    const r = await compile([...files], [{ name: "IdeLauncher__.java", src: launcher }], []);
+    const extra = [{ name: "IdeLauncher__.java", src: launcher }, { name: "IdeGuard__.java", src: GUARD_SRC }];
+    const guarded = files.map(f => ({ path: f.path, model: { getValue: () => guardLoops(f.model.getValue()) } }));
+    let r = await compile(guarded, extra, []);
+    if (!r.dup && r.rc !== 0) r = await compile([...files], extra, []);   // エラー表示は、書き換え前のコードで作り直したものを使う
     if (r.dup) {
       consoleEl.textContent = "同じ名前のファイルが複数あります: " + r.dup + "\nこの環境では、フォルダが違っても同名のファイルは使えません。\n（フォルダ方式を使えなかった理由: " + (r.why || "不明") + "）";
       setStatus("実行できません"); return;
@@ -791,7 +815,7 @@ async function run() {
     setStatus("実行エラー");
     consoleEl.insertAdjacentHTML("beforeend", '<span class="msg-err">\n' + String(e).replace(/</g, "&lt;") + "</span>");
   } finally {
-    running = false; runBtn.disabled = false;
+    running = false; runBtn.disabled = false; $("reset").hidden = true;
   }
 }
 
@@ -914,6 +938,116 @@ async function initSlides() {
   if (sp) $("slides").style.flexBasis = sp;
   setSlides(w !== "0", false);
   showSlide(pg || 1);
+}
+
+// ================= 表示設定（文字サイズ・テーマ）=================
+const FSKEY = "java-editor:fs", THKEY = "java-editor:theme";
+let fontSize = 14;
+try {
+  const f = parseInt(localStorage.getItem(FSKEY), 10); if (f >= 10 && f <= 28) fontSize = f;
+  if (localStorage.getItem(THKEY) === "light") document.documentElement.dataset.theme = "light";
+} catch {}
+function applyFont() {
+  document.documentElement.style.setProperty("--fs", Math.max(11, fontSize - 1) + "px");
+  if (editor) editor.updateOptions({ fontSize });
+  try { localStorage.setItem(FSKEY, String(fontSize)); } catch {}
+}
+applyFont();
+$("fsMinus").addEventListener("click", () => { fontSize = Math.max(10, fontSize - 2); applyFont(); });
+$("fsPlus").addEventListener("click", () => { fontSize = Math.min(28, fontSize + 2); applyFont(); });
+$("themeBtn").addEventListener("click", () => {
+  const light = document.documentElement.dataset.theme !== "light";
+  document.documentElement.dataset.theme = light ? "light" : "dark";
+  if (window.monaco) monaco.editor.setTheme(light ? "vs" : "vs-dark");
+  try { localStorage.setItem(THKEY, light ? "light" : "dark"); } catch {}
+});
+
+// ================= 共用パソコン向け：データ消去・強制リセット・提出用ZIP =================
+$("wipe").addEventListener("click", async () => {
+  if (!confirm("このブラウザに保存されている作業データ（コード、設定、最後に見たページ）をすべて消去して、画面を再読み込みします。\n必要なら、先に ZIP で保存してください。よろしいですか？")) return;
+  try { Object.keys(localStorage).filter(k => k.startsWith("java-editor:")).forEach(k => localStorage.removeItem(k)); } catch {}
+  try {                                   // Java 実行環境の一時ファイル（コンパイル用に書き出したソース）も、可能な範囲で消す
+    const dbs = (indexedDB.databases ? await indexedDB.databases() : []) || [];
+    await Promise.all(dbs.filter(d => /cj|cheerp|leaning/i.test(d.name || "")).map(d => new Promise(res => {
+      const q = indexedDB.deleteDatabase(d.name); q.onsuccess = q.onerror = q.onblocked = () => res();
+    })));
+  } catch {}
+  location.reload();
+});
+$("reset").addEventListener("click", () => { saveProject(); location.reload(); });
+$("zipSubmit").addEventListener("click", async () => {
+  if (!(await ensureZip())) { alert(ZIP_NG); return; }
+  const who = prompt("学籍番号と名前を入力してください（例：12345_山田太郎）");
+  if (!who || !who.trim()) return;
+  const safe = who.trim().replace(/[\\/:*?"<>|\s]+/g, "_").slice(0, 40);
+  const z = new JSZip();
+  files.forEach(f => z.file(f.path, f.model.getValue()));
+  z.file("提出者.txt", "提出者: " + who.trim() + "\n保存日時: " + new Date().toLocaleString("ja-JP") + "\nファイル数: " + files.length + "\n");
+  downloadBlob(await z.generateAsync({ type: "blob" }), safe + "_java.zip");
+  setStatus(safe + "_java.zip を保存しました");
+});
+
+// ================= スライドの全画面表示 =================
+if (!document.fullscreenEnabled) $("full").hidden = true;
+$("full").addEventListener("click", () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else $("slides").requestFullscreen().catch(() => {});
+});
+
+// ================= 無限ループ対策 =================
+// 実行前に、学生のコードの while / for / do のループの中へ「経過時間の確認」を差し込んで実行する。
+// 確認のたびに画面へ処理を返すので、長いループの間も画面が固まりにくく、時間を超えたら自動で止まる。
+const RUN_LIMIT_MS = 15000;          // 1回の実行の上限（ミリ秒）
+const GUARD_CALL = "ide__guard.IdeGuard__.tick();";
+const GUARD_SRC = String.raw`package ide__guard;
+public class IdeGuard__ {
+  static long start = System.currentTimeMillis(), last = start, limit = 15000;
+  static int n = 0;
+  public static void begin(long ms) { start = System.currentTimeMillis(); last = start; limit = ms; n = 0; }
+  public static void tick() {
+    if ((++n & 0x3FFF) != 0) return;
+    long now = System.currentTimeMillis();
+    if (now - start > limit) throw new Error("実行時間が長すぎるため、プログラムを停止しました（無限ループの可能性があります）");
+    if (now - last > 200) { last = now; try { Thread.sleep(1); } catch (InterruptedException e) { } }
+  }
+}
+`;
+function guardLoops(src) {
+  const n = src.length, isId = c => /[A-Za-z0-9_$]/.test(c || ""), ws = c => /\s/.test(c || "");
+  let out = "", i = 0;
+  while (i < n) {
+    const c = src[i], d = src[i + 1];
+    if (c === "/" && d === "/") { const j = src.indexOf("\n", i), e = j < 0 ? n : j; out += src.slice(i, e); i = e; continue; }
+    if (c === "/" && d === "*") { const j = src.indexOf("*/", i + 2), e = j < 0 ? n : j + 2; out += src.slice(i, e); i = e; continue; }
+    if (c === '"' || c === "'") {
+      let j = i + 1; while (j < n && src[j] !== c) { if (src[j] === "\\") j++; j++; }
+      out += src.slice(i, j + 1); i = j + 1; continue;
+    }
+    if (isId(c) && !isId(src[i - 1])) {
+      let j = i; while (j < n && isId(src[j])) j++;
+      const word = src.slice(i, j);
+      if (word === "while" || word === "for" || word === "do") {
+        let k = j; while (ws(src[k])) k++;
+        let ok = true;
+        if (word !== "do") {
+          if (src[k] !== "(") ok = false;
+          else {
+            let depth = 0, q = k;
+            for (; q < n; q++) {
+              const ch = src[q];
+              if (ch === '"' || ch === "'") { q++; while (q < n && src[q] !== ch) { if (src[q] === "\\") q++; q++; } continue; }
+              if (ch === "(") depth++; else if (ch === ")" && --depth === 0) break;
+            }
+            k = q + 1; while (ws(src[k])) k++;
+          }
+        }
+        if (ok && src[k] === "{") { out += src.slice(i, k + 1) + " " + GUARD_CALL; i = k + 1; continue; }
+      }
+      out += word; i = j; continue;
+    }
+    out += c; i++;
+  }
+  return out;
 }
 
 // ================= 画面の操作 =================
