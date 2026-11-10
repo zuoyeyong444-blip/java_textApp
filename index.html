@@ -827,7 +827,7 @@ const sCache = new Map();
 async function fetchSlide(n) {
   if (sCache.has(n)) return sCache.get(n);
   const [o, l] = sIndex.slides[n - 1];
-  const r = await fetch("slides.bin", { headers: { Range: "bytes=" + o + "-" + (o + l - 1) } });
+  const r = await fetch("slides.bin?v=" + (sIndex.id || sIndex.bytes), { headers: { Range: "bytes=" + o + "-" + (o + l - 1) } });
   if (!r.ok) throw new Error("HTTP " + r.status);
   let buf = await r.arrayBuffer();
   let total = parseInt((r.headers.get("Content-Range") || "").split("/")[1], 10);
@@ -865,7 +865,7 @@ function setSlides(open, persist) {
 }
 async function initSlides() {
   try {
-    const r = await fetch("slides.json");
+    const r = await fetch("slides.json?t=" + Date.now(), { cache: "no-store" });   // 古い索引の使い回しを避ける
     if (!r.ok) throw new Error();
     sIndex = await r.json();
   } catch { return; }                                        // 教材データがなければ、エディターだけで使える
