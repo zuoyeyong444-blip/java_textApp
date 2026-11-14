@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Java Editor v1.1.0 (2026-11-12) -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -74,6 +75,10 @@
   #console { flex:1; margin:0; padding:8px 12px; overflow:auto; white-space:pre-wrap;
              font:13px/1.5 ui-monospace,Menlo,Consolas,monospace; }
   .msg-err { color:var(--err); }
+  #inrow { display:flex; align-items:center; gap:8px; padding:6px 12px; border-top:1px solid var(--line); }
+  #inrow[hidden] { display:none; }
+  #liveIn { flex:1; min-width:0; font:13px/1.5 ui-monospace,Menlo,Consolas,monospace; font-size:var(--fs,13px); color:var(--fg); background:var(--bg);
+            border:1px solid var(--accent); border-radius:4px; padding:4px 8px; }
   :root[data-theme="light"] { --bg:#ffffff; --panel:#f1f3f6; --line:#d5d9e0; --fg:#1f2430; --dim:#677085; --accent:#e08a00; --err:#c62828; }
   #stdin, #console { font-size:var(--fs,13px); }
   #slides:fullscreen { background:#0e1014; }
@@ -81,7 +86,7 @@
 </head>
 <body>
 <header>
-  <h1>Java Editor<small id="credit">Produced by Hidekazu Sato</small></h1>
+  <h1>Java Editor<small id="credit">Produced by Hidekazu Sato<span id="ver"></span></small></h1>
   <span id="status">エディターを読み込み中…</span>
   <label class="lab">実行クラス <select id="mainSel"></select></label>
   <button class="sub" id="newProject" type="button">新規プロジェクト</button>
@@ -124,12 +129,17 @@
   </div>
   <div id="bottom">
     <section id="in-wrap">
-      <div class="head">標準入力（Scanner 用。実行前に1行ずつ入力）</div>
-      <textarea id="stdin" spellcheck="false" placeholder="例:&#10;10&#10;20"></textarea>
+      <div class="head">標準入力（あらかじめ入力する場合。空のままなら、実行中に入力できます）</div>
+      <textarea id="stdin" spellcheck="false" placeholder="空のままで構いません（実行中に、画面の下で入力できます）"></textarea>
     </section>
     <section id="out-wrap">
       <div class="head">出力</div>
       <pre id="console"></pre>
+      <div id="inrow" hidden>
+        <span class="lab">入力＞</span>
+        <input id="liveIn" type="text" autocomplete="off" spellcheck="false" aria-label="プログラムへの入力（Enterで送る）">
+        <button class="sub" id="eofBtn" type="button" title="入力の終わりを伝えます（Ctrl+D）">入力終了</button>
+      </div>
     </section>
   </div>
 </main>
@@ -138,6 +148,11 @@
 <script src="https://cjrtnc.leaningtech.com/4.2/loader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
 <script>
+// ================= 版 =================
+// 更新のたびに版を上げる（修正は 1.0.x、機能追加は 1.x.0、大きな変更は x.0.0）
+const APP_VERSION = "1.1.0", APP_DATE = "2026-11-12";
+(() => { const v = document.getElementById("ver"); v.textContent = " · v" + APP_VERSION; v.title = "更新日 " + APP_DATE; })();
+
 // ================= サンプル =================
 const BLANK = `public class Main {
     public static void main(String[] args) {
@@ -185,6 +200,33 @@ public class Main {
     }
 }
 `, "10\n20\n"),
+  one("入力：対話（名前と年齢）", `import java.util.Scanner;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        System.out.print("名前を入力してください: ");
+        String name = sc.nextLine();
+        System.out.print("年齢を入力してください: ");
+        int age = sc.nextInt();
+        System.out.println(name + " さんは " + age + " 歳です。");
+    }
+}
+`),
+  one("入力：対話（終わりまで読む）", `import java.util.Scanner;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        int sum = 0;
+        System.out.println("数字を1行ずつ入力してください（終わったら「入力終了」ボタン）");
+        while (sc.hasNextInt()) {
+            sum += sc.nextInt();
+        }
+        System.out.println("合計: " + sum);
+    }
+}
+`),
   one("配列：平均と最高点", `public class Main {
     public static void main(String[] args) {
         int[] scores = {72, 85, 90, 64, 78};
@@ -226,8 +268,30 @@ public class Main {
 `),
   one("動作確認：無限ループ（自動停止）", `public class Main {
     public static void main(String[] args) {
-        System.out.println("無限ループを開始します（約15秒で自動停止します）");
+        System.out.println("無限ループを開始します（約10秒で自動停止します）");
         while (true) {
+        }
+    }
+}
+`),
+  one("動作確認：無限ループ（出力あり）", `public class Main {
+    public static void main(String[] args) {
+        int i = 0;
+        while (true) {
+            System.out.println("行 " + i);
+            i++;
+        }
+    }
+}
+`),
+  one("動作確認：無限ループ（メモリ増加）", `import java.util.ArrayList;
+import java.util.List;
+
+public class Main {
+    public static void main(String[] args) {
+        List<String> list = new ArrayList<>();
+        while (true) {
+            list.add("データ" + list.size());
         }
     }
 }
@@ -499,7 +563,7 @@ function resolveMainFor(list) {
 function updateStdin() {
   const on = files.some(f => usesStdinSrc(f.model.getValue())), t = $("stdin");
   t.disabled = !on;
-  t.placeholder = on ? "例:\n10\n20" : "このコードは標準入力（System.in）を使っていないため、入力できません";
+  t.placeholder = on ? "空のままで構いません（実行中に、画面の下で入力できます）" : "このコードは標準入力（System.in）を使っていないため、入力できません";
 }
 
 // ================= 保存（ブラウザ内）・ファイル入出力 =================
@@ -756,7 +820,7 @@ async function initJava() {
   }
   setStatus("Java を準備中…（初回は時間がかかります）");
   try {
-    await cheerpjInit({ version: 8 });
+    await cheerpjInit({ version: 8, natives: { Java_ideio_IdeStdin_readLine } });
     cheerpReady = true;
     runBtn.disabled = false;
     setStatus("準備完了");
@@ -770,6 +834,7 @@ async function initJava() {
 async function run() {
   if (!cheerpReady || running || !editor) return;
   running = true; runBtn.disabled = true; $("reset").hidden = false;
+  const wd = startMemWatch();
   consoleEl.textContent = "";
   while (checking) await sleep(100);
   try {
@@ -787,18 +852,23 @@ async function run() {
     let b64 = "";
     for (const b of new TextEncoder().encode(needIn ? $("stdin").value : "")) b64 += String.fromCharCode(b);
     b64 = btoa(b64);
-    const launcher = `public class IdeLauncher__ {
+    const mkLauncher = (guard, inter) => `public class IdeLauncher__ {
   public static void main(String[] a) throws Throwable {
-    System.setIn(new java.io.ByteArrayInputStream(java.util.Base64.getDecoder().decode("${b64}")));
-    ide__guard.IdeGuard__.begin(${RUN_LIMIT_MS}L);
-    ${main}.main(a);
+    System.setIn(${inter ? "new ideio.IdeStdin(" : "new java.io.ByteArrayInputStream("}java.util.Base64.getDecoder().decode("${b64}")));
+${guard ? "    ide__guard.IdeGuard__.begin(" + RUN_LIMIT_MS + "L, " + OUT_LIMIT_BYTES + "L);\n" : ""}    ${main}.main(a);
   }
 }`;
+    const launcher = mkLauncher(true, true);
     setStatus("コンパイル中…");
-    const extra = [{ name: "IdeLauncher__.java", src: launcher }, { name: "IdeGuard__.java", src: GUARD_SRC }];
+    const extra = [{ name: "IdeLauncher__.java", src: launcher }, { name: "IdeGuard__.java", src: GUARD_SRC }, { name: "IdeStdin.java", src: STDIN_SRC }];
     const guarded = files.map(f => ({ path: f.path, model: { getValue: () => guardLoops(f.model.getValue()) } }));
     let r = await compile(guarded, extra, []);
     if (!r.dup && r.rc !== 0) r = await compile([...files], extra, []);   // エラー表示は、書き換え前のコードで作り直したものを使う
+    if (!r.dup && r.rc !== 0 && /IdeGuard__|ide__guard|IdeStdin|ideio/.test(r.text)) {   // 補助機能（保護・対話入力）そのものがコンパイルできなかった場合は、従来の方式で実行する
+      r = await compile([...files], [{ name: "IdeLauncher__.java", src: mkLauncher(false, false) }], []);
+      note = "（補助機能を使えなかったため、保護と対話入力なしで実行します）\n\n";
+      if (r.rc === 0) consoleEl.textContent = note;
+    }
     if (r.dup) {
       consoleEl.textContent = "同じ名前のファイルが複数あります: " + r.dup + "\nこの環境では、フォルダが違っても同名のファイルは使えません。\n（フォルダ方式を使えなかった理由: " + (r.why || "不明") + "）";
       setStatus("実行できません"); return;
@@ -815,7 +885,7 @@ async function run() {
     setStatus("実行エラー");
     consoleEl.insertAdjacentHTML("beforeend", '<span class="msg-err">\n' + String(e).replace(/</g, "&lt;") + "</span>");
   } finally {
-    running = false; runBtn.disabled = false; $("reset").hidden = true;
+    running = false; runBtn.disabled = false; $("reset").hidden = true; clearInterval(wd);
   }
 }
 
@@ -982,7 +1052,7 @@ $("zipSubmit").addEventListener("click", async () => {
   const safe = who.trim().replace(/[\\/:*?"<>|\s]+/g, "_").slice(0, 40);
   const z = new JSZip();
   files.forEach(f => z.file(f.path, f.model.getValue()));
-  z.file("提出者.txt", "提出者: " + who.trim() + "\n保存日時: " + new Date().toLocaleString("ja-JP") + "\nファイル数: " + files.length + "\n");
+  z.file("提出者.txt", "提出者: " + who.trim() + "\nツールの版: v" + APP_VERSION + "\n保存日時: " + new Date().toLocaleString("ja-JP") + "\nファイル数: " + files.length + "\n");
   downloadBlob(await z.generateAsync({ type: "blob" }), safe + "_java.zip");
   setStatus(safe + "_java.zip を保存しました");
 });
@@ -997,21 +1067,104 @@ $("full").addEventListener("click", () => {
 // ================= 無限ループ対策 =================
 // 実行前に、学生のコードの while / for / do のループの中へ「経過時間の確認」を差し込んで実行する。
 // 確認のたびに画面へ処理を返すので、長いループの間も画面が固まりにくく、時間を超えたら自動で止まる。
-const RUN_LIMIT_MS = 15000;          // 1回の実行の上限（ミリ秒）
+const RUN_LIMIT_MS = 10000;          // 1回の実行の上限（ミリ秒）
+const OUT_LIMIT_BYTES = 100000;      // 1回の実行で出力できる量の上限（バイト）
+// 標準入力（System.in）の差し替え。あらかじめ書いた入力を使い切ったら、画面の入力欄（JavaScript 側）に待つ
+const STDIN_SRC = String.raw`package ideio;
+import java.io.*;
+public class IdeStdin extends InputStream {
+  public static long waited = 0;
+  private static native String readLine();
+  private byte[] buf;
+  private int pos = 0;
+  private boolean eof = false;
+  public IdeStdin(byte[] pre) { buf = pre; waited = 0; }
+  private boolean fill() {
+    if (eof) return false;
+    System.out.flush();
+    System.err.flush();
+    long t0 = System.currentTimeMillis();
+    String s;
+    try { s = readLine(); } catch (Throwable t) { s = null; }
+    waited += System.currentTimeMillis() - t0;
+    if (s == null || s.length() == 0 || s.charAt(0) != 'L') { eof = true; return false; }
+    String line = s.substring(1);
+    System.out.println(line);
+    try { buf = (line + "\n").getBytes("UTF-8"); } catch (UnsupportedEncodingException e) { buf = (line + "\n").getBytes(); }
+    pos = 0;
+    return true;
+  }
+  public int read() throws IOException {
+    if (pos >= buf.length && !fill()) return -1;
+    return buf[pos++] & 0xFF;
+  }
+  public int read(byte[] b, int off, int len) throws IOException {
+    if (len == 0) return 0;
+    if (pos >= buf.length && !fill()) return -1;
+    int n = Math.min(len, buf.length - pos);
+    System.arraycopy(buf, pos, b, off, n);
+    pos += n;
+    return n;
+  }
+  public int available() { return buf.length - pos; }
+}
+`;
 const GUARD_CALL = "ide__guard.IdeGuard__.tick();";
 const GUARD_SRC = String.raw`package ide__guard;
+import java.io.*;
 public class IdeGuard__ {
-  static long start = System.currentTimeMillis(), last = start, limit = 15000;
+  static long start = System.currentTimeMillis(), last = start, limit = 10000, outLimit = 100000, outCount = 0, base = 0;
+  static final long MEM_LIMIT = 300L * 1024 * 1024;
   static int n = 0;
-  public static void begin(long ms) { start = System.currentTimeMillis(); last = start; limit = ms; n = 0; }
+  static PrintStream origOut, origErr;
+  static long used() { Runtime r = Runtime.getRuntime(); return r.totalMemory() - r.freeMemory(); }
+  public static void begin(long ms, long outBytes) {
+    start = System.currentTimeMillis(); last = start; limit = ms; outLimit = outBytes; outCount = 0; n = 0;
+    try { base = used(); } catch (Throwable t) { base = 0; }
+    if (origOut == null) { origOut = System.out; origErr = System.err; }
+    System.setOut(wrap(origOut));
+    System.setErr(wrap(origErr));
+  }
+  static PrintStream wrap(final PrintStream target) {
+    OutputStream o = new OutputStream() {
+      public void write(int b) throws IOException { count(1); target.write(b); }
+      public void write(byte[] b, int off, int len) throws IOException { count(len); target.write(b, off, len); }
+      public void flush() throws IOException { target.flush(); }
+    };
+    try { return new PrintStream(o, true, java.nio.charset.Charset.defaultCharset().name()); }
+    catch (UnsupportedEncodingException e) { return new PrintStream(o, true); }
+  }
+  static void count(int k) {
+    outCount += k;
+    if (outCount > outLimit) {
+      outLimit = outCount + 20000;
+      throw new Error("出力が多すぎるため、プログラムを停止しました（無限ループの可能性があります）");
+    }
+  }
   public static void tick() {
-    if ((++n & 0x3FFF) != 0) return;
+    if ((++n & 0xFFF) != 0) return;
     long now = System.currentTimeMillis();
-    if (now - start > limit) throw new Error("実行時間が長すぎるため、プログラムを停止しました（無限ループの可能性があります）");
+    if (now - ideio.IdeStdin.waited - start > limit) throw new Error("実行時間が長すぎるため、プログラムを停止しました（無限ループの可能性があります）");
+    long u; try { u = used() - base; } catch (Throwable t) { u = 0; }
+    if (u > MEM_LIMIT) throw new Error("メモリの使用量が多すぎるため、プログラムを停止しました（無限ループの可能性があります）");
     if (now - last > 200) { last = now; try { Thread.sleep(1); } catch (InterruptedException e) { } }
   }
 }
 `;
+// ブラウザのメモリが限界に近づいたら、コードを保存して画面を再読み込みする（ブラウザごと落ちるのを避ける）
+function startMemWatch() {
+  if (!performance.memory) return null;
+  return setInterval(() => {
+    const m = performance.memory;
+    if (m.usedJSHeapSize > m.jsHeapSizeLimit * 0.6) {
+      try {
+        saveProject();
+        sessionStorage.setItem("java-editor:notice", "メモリの使用量が多すぎたため、実行を中止して画面を再読み込みしました。コードは保存されています。");
+      } catch {}
+      location.reload();
+    }
+  }, 500);
+}
 function guardLoops(src) {
   const n = src.length, isId = c => /[A-Za-z0-9_$]/.test(c || ""), ws = c => /\s/.test(c || "");
   let out = "", i = 0;
@@ -1050,6 +1203,26 @@ function guardLoops(src) {
   return out;
 }
 
+// ================= 対話入力（実行中の標準入力）=================
+// Java 側（ideio.IdeStdin）が入力を読もうとしたときに呼ばれる。入力欄を出して、Enter（または「入力終了」）まで待つ。
+// 戻り値：入力した行なら "L" + 行、入力の終わりなら "E"
+let inputWaiter = null;
+async function Java_ideio_IdeStdin_readLine(lib) {
+  await new Promise(r => setTimeout(r, 50));               // 直前の出力（入力を促す文）が画面に出るのを待つ
+  const row = $("inrow"), box = $("liveIn");
+  row.hidden = false; box.value = "";
+  setTimeout(() => box.focus(), 0);
+  return new Promise(resolve => {
+    inputWaiter = v => { inputWaiter = null; row.hidden = true; resolve(v); };
+  });
+}
+$("liveIn").addEventListener("keydown", e => {
+  if (e.isComposing || !inputWaiter) return;                // 日本語の変換中の Enter は、送らない
+  if (e.key === "Enter") { e.preventDefault(); inputWaiter("L" + $("liveIn").value); }
+  else if (e.key === "d" && e.ctrlKey) { e.preventDefault(); inputWaiter("E"); }
+});
+$("eofBtn").addEventListener("click", () => { if (inputWaiter) inputWaiter("E"); });
+
 // ================= 画面の操作 =================
 runBtn.addEventListener("click", run);
 $("save").addEventListener("click", download);
@@ -1084,6 +1257,10 @@ sel.addEventListener("change", () => {
   consoleEl.textContent = "";
   setStatus("サンプルを読み込みました");
 });
+try {
+  const nt = sessionStorage.getItem("java-editor:notice");
+  if (nt) { sessionStorage.removeItem("java-editor:notice"); consoleEl.textContent = nt; }
+} catch {}
 initSlides();
 </script>
 </body>
