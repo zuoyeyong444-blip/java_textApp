@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Java Editor v1.1.0 (2026-11-12) -->
+<!-- Java Editor v1.1.1 (2026-11-12) -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -150,7 +150,7 @@
 <script>
 // ================= 版 =================
 // 更新のたびに版を上げる（修正は 1.0.x、機能追加は 1.x.0、大きな変更は x.0.0）
-const APP_VERSION = "1.1.0", APP_DATE = "2026-11-12";
+const APP_VERSION = "1.1.1", APP_DATE = "2026-11-12";
 (() => { const v = document.getElementById("ver"); v.textContent = " · v" + APP_VERSION; v.title = "更新日 " + APP_DATE; })();
 
 // ================= サンプル =================
@@ -1074,12 +1074,35 @@ const STDIN_SRC = String.raw`package ideio;
 import java.io.*;
 public class IdeStdin extends InputStream {
   public static long waited = 0;
+  public static boolean lineStart = true;
+  public static void noteByte(int b) { lineStart = (b == '\n'); }
+  public static void note(byte[] b, int off, int len) { if (len > 0) lineStart = (b[off + len - 1] == '\n'); }
   private static native String readLine();
-  private byte[] buf;
+  private final byte[] pre;
+  private int prePos = 0;
+  private byte[] buf = new byte[0];
   private int pos = 0;
   private boolean eof = false;
-  public IdeStdin(byte[] pre) { buf = pre; waited = 0; }
+  public IdeStdin(byte[] p) { pre = p; waited = 0; lineStart = true; }
+  private static String utf8(byte[] b) {
+    try { return new String(b, "UTF-8"); } catch (UnsupportedEncodingException e) { return new String(b); }
+  }
+  private static byte[] utf8(String s) {
+    try { return s.getBytes("UTF-8"); } catch (UnsupportedEncodingException e) { return s.getBytes(); }
+  }
   private boolean fill() {
+    if (prePos < pre.length) {
+      int e = prePos;
+      while (e < pre.length && pre[e] != '\n') e++;
+      int end = e < pre.length ? e + 1 : e;
+      String t = utf8(java.util.Arrays.copyOfRange(pre, prePos, end));
+      prePos = end;
+      while (t.endsWith("\n") || t.endsWith("\r")) t = t.substring(0, t.length() - 1);
+      if (!lineStart) System.out.println(t);
+      buf = utf8(t + "\n");
+      pos = 0;
+      return true;
+    }
     if (eof) return false;
     System.out.flush();
     System.err.flush();
@@ -1090,7 +1113,7 @@ public class IdeStdin extends InputStream {
     if (s == null || s.length() == 0 || s.charAt(0) != 'L') { eof = true; return false; }
     String line = s.substring(1);
     System.out.println(line);
-    try { buf = (line + "\n").getBytes("UTF-8"); } catch (UnsupportedEncodingException e) { buf = (line + "\n").getBytes(); }
+    buf = utf8(line + "\n");
     pos = 0;
     return true;
   }
@@ -1127,8 +1150,8 @@ public class IdeGuard__ {
   }
   static PrintStream wrap(final PrintStream target) {
     OutputStream o = new OutputStream() {
-      public void write(int b) throws IOException { count(1); target.write(b); }
-      public void write(byte[] b, int off, int len) throws IOException { count(len); target.write(b, off, len); }
+      public void write(int b) throws IOException { count(1); ideio.IdeStdin.noteByte(b); target.write(b); }
+      public void write(byte[] b, int off, int len) throws IOException { count(len); ideio.IdeStdin.note(b, off, len); target.write(b, off, len); }
       public void flush() throws IOException { target.flush(); }
     };
     try { return new PrintStream(o, true, java.nio.charset.Charset.defaultCharset().name()); }
